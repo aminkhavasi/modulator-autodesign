@@ -95,12 +95,14 @@ class DesignResult:
     p_doping: float
     n_doping: float
     voltages: np.ndarray
-    C_pF_cm: np.ndarray       # capacitance per cm at each voltage
-    R_ohm_cm: float           # series resistance, computed once at bias=0
-    f3dB_GHz: np.ndarray      # 1 / (2 pi R C)
-    VpiL_V_cm: np.ndarray     # pi / (dphi/dV per cm); NaN at endpoints
-    loss_dB_cm: np.ndarray    # from Im(n_eff)
-    n_eff_baseline: complex   # at first voltage; phase reference
+    C_pF_cm: np.ndarray         # capacitance per cm at each voltage
+    R_ohm_cm: np.ndarray        # series resistance, per voltage (was scalar)
+    f3dB_GHz: np.ndarray        # 1 / (2 pi R(V) C(V))
+    VpiL_V_cm: np.ndarray       # pi / (dphi/dV per cm); endpoints kept as-is
+    loss_dB_cm: np.ndarray      # from Im(n_eff)
+    n_eff_baseline: complex     # at first voltage; phase reference
+    x_p_m: np.ndarray           # depletion edge p-side, per voltage
+    x_n_m: np.ndarray           # depletion edge n-side, per voltage
     charge_task_id: str
     mode_solver_batch_dir: str
 
@@ -318,30 +320,55 @@ def _build_mesh(oxide_name: str) -> td.DistanceUnstructuredGrid:
 
 # ---------------------------------------------------------------------------
 # Resistance via Caughey-Thomas + 2D Laplace
+#
+# Convention: in this device, "voltage" is the bias on the n-contact while the
+# p-contact is grounded (see notebook Cell 16). So **positive voltage = reverse
+# bias**, negative voltage = forward bias.  The depletion-region formula uses
+# V_total = V_bi + voltage, clipped to a small positive value to avoid the
+# depletion approximation collapsing under near-flat-band forward bias.
 # ---------------------------------------------------------------------------
 def _caughey_thomas(mu_max, mu_min, ref_N, exp_N, N):
     """Caughey-Thomas mobility (T=300 K).  N in cm^-3, returns cm^2/(V s)."""
     return mu_min + (mu_max - mu_min) / (1 + (N / ref_N) ** exp_N)
 
 
-def _series_resistance(p_doping: float, n_doping: float,
-                       device_depth_um: float = 10000.0) -> dict:
-    """Compute series resistance R [Ohm.cm] at zero reverse bias.
+# Physical constants (SI)
+_Q = 1.602e-19
+_EPS0 = 8.854e-12
+_EPS_S = _EPS0 * 11.7
+_KB = 1.381e-23
+_T = 300.0
+_NI = 1.0e16  # m^-3, intrinsic Si density
 
-    Direct port of notebook Cell 22.  Hybrid: analytical for slab regions,
-    2D Laplace solver for channel regions.  bias=0 hardcoded as in notebook.
-    """
-    q = 1.602e-19
-    eps0 = 8.854e-12
-    eps_s = eps0 * 11.7
-    k_B = 1.381e-23
-    T = 300
-    n_i = 1.0e16  # m^-3
 
+def _depletion_edges_m(p_doping: float, n_doping: float,
+                       voltage: float) -> tuple[float, float, float, float]:
+    """Return (Wd, x_p, x_n, V_total) in meters / volts at given reverse bias."""
     N_A = p_doping * 1e6  # cm^-3 -> m^-3
     N_D = n_doping * 1e6
+    V_bi = (_KB * _T / _Q) * np.log((N_A * N_D) / (_NI ** 2))
+    # Clip to avoid V_total going to zero or negative under forward bias.
+    V_total = max(V_bi + voltage, V_bi * 0.05)
+    Wd = np.sqrt(2 * _EPS_S * V_total * (N_A + N_D) / (N_A * N_D * _Q))
+    x_p = -Wd * (N_D / (N_A + N_D))
+    x_n = Wd * (N_A / (N_A + N_D))
+    return Wd, x_p, x_n, V_total
 
-    # Mobilities (cm^2/Vs -> m^2/Vs)
+
+def _series_resistance_at_voltage(p_doping: float, n_doping: float,
+                                  voltage: float, *,
+                                  device_depth_um: float = 10000.0,
+                                  laplace_grid: int = 100) -> dict:
+    """Series resistance R [Ohm.cm] at a single reverse-bias voltage.
+
+    Hybrid model: analytical for slab/access regions, 2D Laplace for the two
+    channel regions whose lengths shrink with reverse bias.  Returns a dict
+    with all 8 sub-resistances, total, and depletion edges (the latter are
+    used to place mode-solver mesh refinements).
+    """
+    N_A = p_doping * 1e6
+    N_D = n_doping * 1e6
+
     mu_n = _caughey_thomas(1471, 52.2, 9.68e16, 0.68, n_doping) * 1e-4
     mu_p = _caughey_thomas(470.5, 44.9, 2.23e17, 0.719, p_doping) * 1e-4
     mu_n_p = _caughey_thomas(1471, 52.2, 9.68e16, 0.68, N_P_DOPING) * 1e-4
@@ -354,53 +381,52 @@ def _series_resistance(p_doping: float, n_doping: float,
     t_chan = H_CORE * 1e-6
     L = device_depth_um * 1e-6
 
-    # Built-in potential and depletion widths (bias = 0)
-    V_bi = (k_B * T / q) * np.log((N_A * N_D) / (n_i ** 2))
-    V_total = V_bi  # bias = 0 -- matches notebook
-    Wd = np.sqrt(2 * eps_s * V_total * (N_A + N_D) / (N_A * N_D * q))
-    x_p = -Wd * (N_D / (N_A + N_D))
-    x_n = Wd * (N_A / (N_A + N_D))
+    Wd, x_p, x_n, V_total = _depletion_edges_m(p_doping, n_doping, voltage)
 
-    # Section lengths
+    # Channel lengths (voltage-dependent through x_p, x_n)
     l1 = -w / 2 - Y_P_P * 1e-6
-    l2 = x_p + w / 2
-    l3 = w / 2 - x_n
+    l2 = x_p + w / 2          # depends on voltage
+    l3 = w / 2 - x_n          # depends on voltage
     l4 = Y_N_P * 1e-6 - w / 2
     l5 = -(Y_P_PP - Y_P_P) * 1e-6
     l6 = (Y_N_PP - Y_N_P) * 1e-6
     l7 = (W_CLEARANCE + Y_P_PP) * 1e-6 + w / 2
     l8 = (W_CLEARANCE - Y_N_PP) * 1e-6 + w / 2
 
-    # Simple resistances
-    den1 = q * mu_p * N_A * t_slab * L
-    den4 = q * mu_n * N_D * t_slab * L
-    den5 = q * mu_p_p * (P_P_DOPING * 1e6) * t_slab * L
-    den6 = q * mu_n_p * (N_P_DOPING * 1e6) * t_slab * L
-    den7 = q * mu_p_pp * (P_PP_DOPING * 1e6) * t_slab * L
-    den8 = q * mu_n_pp * (N_PP_DOPING * 1e6) * t_slab * L
+    # Guard: under strong reverse bias the channel can disappear (l2 or l3
+    # < 0 means depletion has eaten the entire core/slab boundary).  Clip at
+    # a small positive value -- the resulting Rp/Rn will be tiny but finite.
+    l2_eff = max(l2, 1e-9)
+    l3_eff = max(l3, 1e-9)
 
-    # 2D Laplace for channel regions (notebook uses 100x100 grid)
-    sigma_n = q * mu_n * N_D
-    sigma_p = q * mu_p * N_A
+    den1 = _Q * mu_p * N_A * t_slab * L
+    den4 = _Q * mu_n * N_D * t_slab * L
+    den5 = _Q * mu_p_p * (P_P_DOPING * 1e6) * t_slab * L
+    den6 = _Q * mu_n_p * (N_P_DOPING * 1e6) * t_slab * L
+    den7 = _Q * mu_p_pp * (P_PP_DOPING * 1e6) * t_slab * L
+    den8 = _Q * mu_n_pp * (N_PP_DOPING * 1e6) * t_slab * L
 
-    solver_p = LaplaceSolver(w=l2, h=t_chan, ny=100, nz=100)
+    sigma_p = _Q * mu_p * N_A
+    sigma_n = _Q * mu_n * N_D
+
+    solver_p = LaplaceSolver(w=l2_eff, h=t_chan, ny=laplace_grid, nz=laplace_grid)
     solver_p.set_bc(side="left", value=1.0, start=0, end=t_slab)
     solver_p.set_bc(side="right", value=0.0)
     solver_p.solve()
 
-    solver_n = LaplaceSolver(w=l3, h=t_chan, ny=100, nz=100)
+    solver_n = LaplaceSolver(w=l3_eff, h=t_chan, ny=laplace_grid, nz=laplace_grid)
     solver_n.set_bc(side="left", value=1.0, start=0, end=t_slab)
     solver_n.set_bc(side="right", value=0.0)
     solver_n.solve()
 
-    Rp = 1 / (L * solver_p.calculate_current_across_y(l2 / 2 * 0.95, sigma_p))
-    Rn = 1 / (L * solver_n.calculate_current_across_y(l3 / 2 * 0.95, sigma_n))
+    Rp = 1 / (L * solver_p.calculate_current_across_y(l2_eff / 2 * 0.95, sigma_p))
+    Rn = 1 / (L * solver_n.calculate_current_across_y(l3_eff / 2 * 0.95, sigma_n))
 
     R = {
-        "R1_p_slab": l1 / den1,
-        "R2_p_chan": Rp,
-        "R3_n_chan": Rn,
-        "R4_n_slab": l4 / den4,
+        "R1_p_slab":   l1 / den1,
+        "R2_p_chan":   Rp,
+        "R3_n_chan":   Rn,
+        "R4_n_slab":   l4 / den4,
         "R5_p_p_slab": l5 / den5,
         "R6_n_p_slab": l6 / den6,
         "R7_p_pp_slab": l7 / den7,
@@ -409,7 +435,26 @@ def _series_resistance(p_doping: float, n_doping: float,
     R["R_total_ohm_cm"] = sum(R.values())
     R["x_p_m"] = x_p
     R["x_n_m"] = x_n
+    R["V_total_V"] = V_total
+    R["voltage_V"] = voltage
     return R
+
+
+def _series_resistance_sweep(p_doping: float, n_doping: float, *,
+                             cache_path: Path | None = None) -> list[dict]:
+    """Compute R(V) at every voltage in VOLTAGES.  Cached on disk."""
+    if cache_path is not None and cache_path.exists():
+        with cache_path.open("rb") as f:
+            print(f"[R(V)]   cache hit: {cache_path.name}")
+            return pickle.load(f)
+    out = [_series_resistance_at_voltage(p_doping, n_doping, float(v))
+           for v in VOLTAGES]
+    if cache_path is not None:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with cache_path.open("wb") as f:
+            pickle.dump(out, f)
+        print(f"[R(V)]   cached -> {cache_path.name}")
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +662,7 @@ def evaluate_design(mult: float, *, cache_dir: str = "cache") -> DesignResult:
     cache_root = Path(cache_dir)
     charge_cache = cache_root / f"{label}_charge.pkl"
     mode_cache = cache_root / f"{label}_modes.pkl"
+    rsweep_cache = cache_root / f"{label}_R_sweep.pkl"
     batch_dir = str(cache_root / f"{label}_batch")
 
     # 1. Charge simulation
@@ -638,28 +684,31 @@ def evaluate_design(mult: float, *, cache_dir: str = "cache") -> DesignResult:
             f"Capacitance voltage axis mismatch.  Expected {VOLTAGES}, got {mnt_v}"
         )
 
-    # 3. Series resistance (analytical + Laplace, at bias=0)
-    R = _series_resistance(p_doping, n_doping)
-    R_total = R["R_total_ohm_cm"]
-    f3dB_GHz = 1e12 / (2 * np.pi * R_total * np.array(C_pF_cm)) / 1e9
+    # 3. Voltage-dependent series resistance (analytical + Laplace per V)
+    R_sweep = _series_resistance_sweep(p_doping, n_doping, cache_path=rsweep_cache)
+    R_arr = np.array([r["R_total_ohm_cm"] for r in R_sweep])
+    x_p_arr = np.array([r["x_p_m"] for r in R_sweep])
+    x_n_arr = np.array([r["x_n_m"] for r in R_sweep])
+    f3dB_GHz = 1e12 / (2 * np.pi * R_arr * np.array(C_pF_cm)) / 1e9
 
-    # 4. Mode-solver batch
+    # 4. Mode-solver batch.  We use the bias=0 depletion edges to position the
+    # mesh-refinement boxes (these are "where to refine the optical mesh"
+    # heuristics, not the physics; using a single representative position
+    # keeps caching simple and matches the notebook).
+    arg_v0 = int(np.argmin(np.abs(VOLTAGES)))
     n_eff_arr = _run_mode_solver_batch(
         charge_data, monitor_names,
-        x_p_m=R["x_p_m"], x_n_m=R["x_n_m"],
+        x_p_m=x_p_arr[arg_v0], x_n_m=x_n_arr[arg_v0],
         cache_path=mode_cache, batch_dir=batch_dir,
     )
 
-    # 5. VpiL and loss from complex n_eff
+    # 5. VpiL and loss from complex n_eff.  Endpoints are kept as-is (less
+    # accurate one-sided gradient, but useful for diagnostics).
     delta_neff = np.real(n_eff_arr - n_eff_arr[0])
     rel_phase_change = 2 * np.pi * delta_neff / WVL_UM * 1e4  # rad/cm
     dphiL_dv = np.gradient(rel_phase_change, VOLTAGES)
     with np.errstate(divide="ignore", invalid="ignore"):
         VpiL = np.where(np.abs(dphiL_dv) > 1e-12, np.pi / dphiL_dv, np.nan)
-    # Mark endpoint values as unreliable
-    VpiL_masked = VpiL.copy()
-    VpiL_masked[0] = np.nan
-    VpiL_masked[-1] = np.nan
 
     loss_dB_cm = (10 * 4 * np.pi * np.imag(n_eff_arr) / WVL_UM
                   * 1e4 * np.log10(np.exp(1)))
@@ -670,11 +719,13 @@ def evaluate_design(mult: float, *, cache_dir: str = "cache") -> DesignResult:
         n_doping=float(n_doping),
         voltages=VOLTAGES.copy(),
         C_pF_cm=np.array(C_pF_cm),
-        R_ohm_cm=float(R_total),
+        R_ohm_cm=R_arr,
         f3dB_GHz=np.array(f3dB_GHz),
-        VpiL_V_cm=VpiL_masked,
+        VpiL_V_cm=np.array(VpiL),
         loss_dB_cm=np.array(loss_dB_cm),
         n_eff_baseline=complex(n_eff_arr[0]),
+        x_p_m=x_p_arr,
+        x_n_m=x_n_arr,
         charge_task_id=str(charge_cache),
         mode_solver_batch_dir=batch_dir,
     )
@@ -686,9 +737,10 @@ if __name__ == "__main__":
     mult = float(sys.argv[1]) if len(sys.argv) > 1 else 1.0
     print(f"Evaluating mult={mult}...")
     result = evaluate_design(mult)
-    print("\nResults:")
-    print(f"  R_total = {result.R_ohm_cm:.2f} Ohm.cm")
-    print(f"  C       = {result.C_pF_cm}")
-    print(f"  f3dB    = {result.f3dB_GHz}")
-    print(f"  VpiL    = {result.VpiL_V_cm}")
-    print(f"  loss    = {result.loss_dB_cm}")
+    print("\nResults (per voltage):")
+    print(f"  voltages = {result.voltages}")
+    print(f"  C        = {result.C_pF_cm}")
+    print(f"  R        = {result.R_ohm_cm}")
+    print(f"  f3dB     = {result.f3dB_GHz}")
+    print(f"  VpiL     = {result.VpiL_V_cm}")
+    print(f"  loss     = {result.loss_dB_cm}")

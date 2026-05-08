@@ -52,13 +52,15 @@ def evaluated_mults(history: list[dict]) -> set[float]:
 def append_result(result: DesignResult, *,
                   path: Path = JOURNAL,
                   notes: str = "") -> int:
-    """Write the 7 interior-voltage rows to the journal. Returns rows written."""
+    """Write all 9 voltage rows to the journal, flagging interior vs endpoint.
+
+    Returns the number of rows written.
+    """
     rows = 0
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     with path.open("a") as f:
         for i, v in enumerate(VOLTAGES):
-            if not INTERIOR_MASK[i]:
-                continue
+            vpil = result.VpiL_V_cm[i]
             entry = {
                 "timestamp": now,
                 "run_id": f"mult_{result.mult:.4f}",
@@ -66,12 +68,16 @@ def append_result(result: DesignResult, *,
                 "p_doping_cm3": result.p_doping,
                 "n_doping_cm3": result.n_doping,
                 "target_v": float(v),
+                "is_interior": bool(INTERIOR_MASK[i]),
                 "C_pF_per_cm": float(result.C_pF_cm[i]),
-                "R_ohm_cm": result.R_ohm_cm,
+                "R_ohm_cm": float(result.R_ohm_cm[i]),
                 "f3dB_GHz": float(result.f3dB_GHz[i]),
-                "VpiL_V_cm": (None if np.isnan(result.VpiL_V_cm[i])
-                              else float(result.VpiL_V_cm[i])),
+                "VpiL_V_cm": (None if (isinstance(vpil, float)
+                                       and np.isnan(vpil))
+                              else float(vpil)),
                 "loss_dB_per_cm": float(result.loss_dB_cm[i]),
+                "x_p_um": float(result.x_p_m[i] * 1e6),
+                "x_n_um": float(result.x_n_m[i] * 1e6),
                 "n_eff_re": float(result.n_eff_baseline.real),
                 "n_eff_im": float(result.n_eff_baseline.imag),
                 "charge_cache": result.charge_task_id,
@@ -127,8 +133,9 @@ def pick_next_mult(history: list[dict], *,
 
 
 def _pareto_points(history: list[dict]) -> list[dict]:
-    """Pareto-optimal points minimizing both VpiL and C."""
-    valid = [e for e in history if e.get("VpiL_V_cm") is not None]
+    """Pareto-optimal points minimizing both VpiL and C, **interior voltages only**."""
+    valid = [e for e in history
+             if e.get("VpiL_V_cm") is not None and e.get("is_interior", True)]
     if not valid:
         return []
     pts = sorted(valid, key=lambda e: (e["VpiL_V_cm"], e["C_pF_per_cm"]))
@@ -174,8 +181,10 @@ def cmd_status(args):
     print(f"{len(history)} journal rows, {len(done)} unique mults evaluated:")
     for m in done:
         rows = [e for e in history if round(e["mult"], 6) == round(m, 6)]
-        valid = [r for r in rows if r.get("VpiL_V_cm") is not None]
-        print(f"  mult={m:7.3f}  rows={len(rows):2d}  valid_VpiL={len(valid):2d}")
+        interior = [r for r in rows if r.get("is_interior", True)]
+        valid = [r for r in interior if r.get("VpiL_V_cm") is not None]
+        print(f"  mult={m:7.3f}  rows={len(rows):2d}  "
+              f"interior={len(interior):2d}  valid_VpiL={len(valid):2d}")
 
 
 def cmd_sweep(args):
