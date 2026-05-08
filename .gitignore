@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+.env
+*.egg-info/
+
+# Tidy3D simulation artifacts (regeneratable, often large)
+*.hdf5
+*.h5
+simulations/
+sim_data/
+tidy3d_cache/
+
+# Generated outputs
+field_plots/
+*.png
+*.jpg
+*.gif
+*.mp4
+!docs/**/*.png
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets — never commit these
+*.key
+credentials.json
+.tidy3d_credentials
