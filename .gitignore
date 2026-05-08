@@ -33,3 +33,5 @@ Thumbs.db
 *.key
 credentials.json
 .tidy3d_credentials
+# Local wheel files (PhotonForge etc.) - re-download from CI artifacts if needed
+wheels/*.whl
