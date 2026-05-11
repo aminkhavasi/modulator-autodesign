@@ -173,25 +173,34 @@ def eo_response(cps: CPSResult, junction: Junction, length_um: float, *,
 
 def bandwidth_3dB_GHz(cps: CPSResult, junction: Junction, length_um: float, **kw
                       ) -> float:
-    """3-dB EO bandwidth (GHz) by interpolating |H_total|^2 vs frequency.
+    """3-dB EO bandwidth (GHz).
 
     Defined as the lowest f > 0 at which 20*log10(|H_total(f)|/|H_total(f=1Hz)|)
     crosses -3 dB.  Returns NaN if the response stays above -3 dB across the
     whole simulated range, or if it's never above -3 dB (broken response).
+
+    The FDTD-extracted gamma(f) carries a small (~0.5-1 dB) single-point
+    ripple that can produce a spurious early crossing of -3 dB.  We
+    therefore smooth H_dB with a narrow Gaussian (sigma = 2 samples,
+    ~1.2 GHz at our 0.6 GHz grid) before searching for the crossing.
+    That removes single-point spikes while leaving the physical rolloff
+    (slope ~5-15 GHz) untouched.
     """
+    from scipy.ndimage import gaussian_filter1d
     freqs_ext, H_total, _ = eo_response(cps, junction, length_um, **kw)
     H_dB = 20.0 * np.log10(np.abs(H_total) / np.abs(H_total[0]))
+    # Smooth everything except the DC anchor at index 0 (that's a 1-Hz
+    # extrapolation point used only for normalization).
+    if len(H_dB) >= 5:
+        H_dB[1:] = gaussian_filter1d(H_dB[1:], sigma=2.0, mode="nearest")
 
-    # Look for first crossing of -3 dB
     above = H_dB > -3.0
     if not above[0]:
-        return float("nan")  # response is never near 0 dB at low freq -- broken
-    crossing_idx = np.argmax(~above)  # first False after a True streak
+        return float("nan")
+    crossing_idx = np.argmax(~above)
     if crossing_idx == 0:
-        # Never crosses -- or starts already below.  Either way, no 3-dB BW.
         return float("nan")
 
-    # Linear interpolate between freqs_ext[crossing_idx-1] and freqs_ext[crossing_idx]
     f_lo, f_hi = freqs_ext[crossing_idx - 1], freqs_ext[crossing_idx]
     H_lo, H_hi = H_dB[crossing_idx - 1], H_dB[crossing_idx]
     if H_hi == H_lo:
