@@ -320,13 +320,11 @@ Implementation: probably **Streamlit** (single-file, file-watcher refresh).
 Read `step2_journal.jsonl` directly; no synchronization issues with the
 batch runner.
 
-Defer until Step 2 has 1-2 c_targets fully optimized — design the
-dashboard once you know what numbers actually need monitoring.
 
 ### End-of-project blog post
 After the final bandwidth-vs-C result, write `BLOG_POST.md` at the project
 root. ~1500-2500 words, technical but accessible to a competent EE/photonics
-engineer who isn't a Tidy3D user.
+engineer.
 
 Required sections:
 1. **Problem framing.** SOI PN-junction MZM at 1.55 µm; why bandwidth-vs-C
@@ -338,26 +336,9 @@ Required sections:
    agent. **No single tool does the whole pipeline; the integration *is*
    the value.**
 4. **Cost economy.** How LHS+BO+caching+batching kept FDTD count tractable.
-5. **Where the human did the real work.** This is the section that matters
-   most. The LLM did not "design the modulator." Amin (Flexcompute
-   engineer) did. Items to credit explicitly:
-   - Identified push-pull series-pn convention and the c/2, r×2 factor.
-   - Caught a benchmarked-code regression (gamma-feed unit conversion)
-     that the LLM had wrongly "simplified."
-   - Decided on the C-target selection rule ("for given C, pick min VπL").
-   - Picked the inner-loop algorithm (LHS + BO with reviews) and the
-     budget pacing (soft 20 / hard 40 per C, manual checkpoints).
-   - Specified the loaded-line objective (after junction loading, not
-     before — non-obvious but important).
-   - Insisted on segmented-line length normalization.
-   - Reviewed the symmetry-trick attempt and accepted the deferral when
-     the post-2.10 RF API schema couldn't be confirmed.
+5. **The human role.** 
+  The engineer design the process, makes methodological choices and creates the workflow and reviews final output:
 6. **Lessons learned and limitations.**
 7. **Forward-looking.** Other devices this same workflow could tackle.
-
-The agent must NOT claim it "designed" the modulator. It coded, ran tools,
-and reported. Amin set the plan, made every methodological choice, and
-caught the bugs. The LLM is a productivity multiplier on top of an expert
-designer's plan, not a replacement for one.
 
 Defer until the full Step-2 sweep + bandwidth comparison is complete.

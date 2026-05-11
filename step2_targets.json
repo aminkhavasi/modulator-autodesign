@@ -1,0 +1,102 @@
+[
+  {
+    "c_target_index": 0,
+    "C_target_pF_per_cm": 1.4857627766703108,
+    "C_pF_per_cm": 2.919364744900113,
+    "R_ohm_cm": 0.7228912721348193,
+    "VpiL_V_cm": 1.523491541619689,
+    "loss_dB_per_cm": 8.462675348410617,
+    "step1_mult": 0.4472135954999579,
+    "step1_target_v": 0.0
+  },
+  {
+    "c_target_index": 1,
+    "C_target_pF_per_cm": 3.150904961950184,
+    "C_pF_per_cm": 4.010352250974835,
+    "R_ohm_cm": 0.5904066766433709,
+    "VpiL_V_cm": 1.0776515782065168,
+    "loss_dB_per_cm": 10.694589198169446,
+    "step1_mult": 0.668740304976422,
+    "step1_target_v": -0.25
+  },
+  {
+    "c_target_index": 2,
+    "C_target_pF_per_cm": 4.816047147230058,
+    "C_pF_per_cm": 6.265938451023656,
+    "R_ohm_cm": 0.26007864041093676,
+    "VpiL_V_cm": 0.8003789292729702,
+    "loss_dB_per_cm": 60.75136616427293,
+    "step1_mult": 5.0,
+    "step1_target_v": 0.5
+  },
+  {
+    "c_target_index": 3,
+    "C_target_pF_per_cm": 6.481189332509931,
+    "C_pF_per_cm": 7.621226482767516,
+    "R_ohm_cm": 0.2995788104566858,
+    "VpiL_V_cm": 0.6192183727118754,
+    "loss_dB_per_cm": 41.38269542787152,
+    "step1_mult": 3.34370152488211,
+    "step1_target_v": -0.25
+  },
+  {
+    "c_target_index": 4,
+    "C_target_pF_per_cm": 8.146331517789806,
+    "C_pF_per_cm": 9.016546675946762,
+    "R_ohm_cm": 0.26125976080976115,
+    "VpiL_V_cm": 0.5372879096848783,
+    "loss_dB_per_cm": 63.126840584236746,
+    "step1_mult": 5.0,
+    "step1_target_v": -0.25
+  },
+  {
+    "c_target_index": 5,
+    "C_target_pF_per_cm": 9.811473703069678,
+    "C_pF_per_cm": 10.35269706058481,
+    "R_ohm_cm": 0.21129543806647608,
+    "VpiL_V_cm": 0.49516417188930945,
+    "loss_dB_per_cm": 133.60126251073035,
+    "step1_mult": 10.0,
+    "step1_target_v": 0.0
+  },
+  {
+    "c_target_index": 6,
+    "C_target_pF_per_cm": 11.476615888349553,
+    "C_pF_per_cm": 12.11169706429825,
+    "R_ohm_cm": 0.21149735578515863,
+    "VpiL_V_cm": 0.4179401770316873,
+    "loss_dB_per_cm": 134.97322467716202,
+    "step1_mult": 10.0,
+    "step1_target_v": -0.25
+  },
+  {
+    "c_target_index": 7,
+    "C_target_pF_per_cm": 13.141758073629427,
+    "C_pF_per_cm": 14.067899564588927,
+    "R_ohm_cm": 0.17669035321337367,
+    "VpiL_V_cm": 0.3826908800487621,
+    "loss_dB_per_cm": 292.7251927769471,
+    "step1_mult": 20.0,
+    "step1_target_v": 0.0
+  },
+  {
+    "c_target_index": 8,
+    "C_target_pF_per_cm": 14.8069002589093,
+    "C_pF_per_cm": 14.067899564588927,
+    "R_ohm_cm": 0.17669035321337367,
+    "VpiL_V_cm": 0.3826908800487621,
+    "loss_dB_per_cm": 292.7251927769471,
+    "step1_mult": 20.0,
+    "step1_target_v": 0.0
+  },
+  {
+    "c_target_index": 9,
+    "C_target_pF_per_cm": 16.472042444189174,
+    "C_pF_per_cm": 16.472042444189174,
+    "R_ohm_cm": 0.1767800852089617,
+    "VpiL_V_cm": 0.3244665041996754,
+    "loss_dB_per_cm": 294.7815310505809,
+    "step1_mult": 20.0,
+    "step1_target_v": -0.25
+  }
+]

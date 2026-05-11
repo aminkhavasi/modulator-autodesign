@@ -14,6 +14,17 @@ env/
 simulations/
 sim_data/
 tidy3d_cache/
+# Local result caches — paid-for sim outputs, but binary and large.
+# Journals are the source of truth; do not delete the cache directories
+# locally, just keep them out of git.
+cache/
+cache_step2/
+
+# Run logs (verbose; the journals capture the durable record)
+*.log
+
+# Claude Code local agent state
+.claude/
 
 # Generated outputs
 field_plots/

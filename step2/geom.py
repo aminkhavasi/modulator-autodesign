@@ -42,6 +42,12 @@ L_SEGMENTED_TARGET = 1000.0
 NUM_UNITS_MIN = 8
 # Input/output unloaded CPS lengths, expressed as multiples of period P
 NUM_UNITS_FEEDLINE = 10
+# Floor for feedline length so wave ports keep ≥2 mesh cells of clearance
+# from the simulation boundary. NUM_UNITS_FEEDLINE * period drops below
+# this when r and c are both small; without the floor, Tidy3D rejects the
+# batch at upload-time validation. Smallest LHS draw that passed was
+# ~229 µm — 300 µm gives a margin without ballooning the sim domain.
+MIN_L_FEEDLINE_UM = 300.0
 
 # Frequency band (Hz) -- fixed per notebook
 F_MIN = 10e9
@@ -93,7 +99,7 @@ class CPSGeometry:
     @property
     def L_feedline(self) -> float:
         """Length of one input/output unloaded section (microns)."""
-        return NUM_UNITS_FEEDLINE * self.period
+        return max(NUM_UNITS_FEEDLINE * self.period, MIN_L_FEEDLINE_UM)
 
     @property
     def w_cps(self) -> float:

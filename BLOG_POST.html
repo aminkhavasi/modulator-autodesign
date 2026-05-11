@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Designing Ten Modulators Overnight: A Multiphysics Loop, Run by an Agent</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --text: #1a1a1a;
+    --muted: #555;
+    --accent: #0b6cb7;
+    --border: #e3e3e3;
+    --code-bg: #f5f5f7;
+    --table-stripe: #fafafa;
+  }
+  html { scroll-behavior: smooth; }
+  body {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 5rem;
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    font-size: 18px;
+    line-height: 1.65;
+    color: var(--text);
+    background: #fff;
+  }
+  h1 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 2.0rem;
+    line-height: 1.25;
+    margin: 0 0 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 1.4rem;
+    margin: 2.6rem 0 0.8rem;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 0.3rem;
+  }
+  p { margin: 0 0 1.05rem; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
+
+  figure {
+    margin: 1.8rem 0 1.6rem;
+    text-align: center;
+  }
+  figure img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  figcaption {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 0.88rem;
+    color: var(--muted);
+    margin-top: 0.6rem;
+    line-height: 1.45;
+    text-align: left;
+    padding: 0 0.5rem;
+  }
+
+  table {
+    border-collapse: collapse;
+    margin: 1.4rem auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 0.92rem;
+    width: 100%;
+  }
+  th, td {
+    padding: 0.45rem 0.75rem;
+    text-align: right;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    font-weight: 700;
+    border-bottom: 2px solid #999;
+    background: var(--table-stripe);
+  }
+  tbody tr:nth-child(even) { background: var(--table-stripe); }
+  tbody tr:hover { background: #eef6fb; }
+  td.peak { font-weight: 700; color: #0b6cb7; }
+
+  pre, code {
+    font-family: "SF Mono", "JetBrains Mono", Consolas, Menlo, monospace;
+    font-size: 0.92rem;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.9rem 1rem;
+    overflow-x: auto;
+    line-height: 1.45;
+    margin: 1.2rem 0;
+  }
+  p code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.35rem;
+    border-radius: 3px;
+    font-size: 0.88em;
+  }
+
+  ol, ul {
+    padding-left: 1.4rem;
+    margin: 0.8rem 0 1.2rem;
+  }
+  li { margin-bottom: 0.45rem; }
+
+  .lede {
+    font-size: 1.08rem;
+    color: #333;
+  }
+
+  .byline {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 0.9rem;
+    color: var(--muted);
+    margin-bottom: 2.2rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1rem;
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 3rem 0 2rem;
+  }
+
+  @media (max-width: 600px) {
+    body { font-size: 16px; padding: 1.5rem 1rem 3rem; }
+    h1 { font-size: 1.55rem; }
+    h2 { font-size: 1.2rem; }
+    table { font-size: 0.82rem; }
+    th, td { padding: 0.35rem 0.45rem; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Designing Ten Modulators Overnight: A Multiphysics Loop, Run by an Agent</h1>
+<div class="byline">Agentic photonic design series · Part 3</div>
+
+<p class="lede">In a silicon photonic Mach–Zehnder modulator, the two numbers a
+customer actually reads off the datasheet are <strong>bandwidth</strong> and
+<strong>V<sub>π</sub>L</strong>. Bandwidth tells them how fast the device can
+swing; V<sub>π</sub>L tells them how short it can be for a given drive voltage.
+The two are physically coupled — a heavier-doped junction gives lower
+V<sub>π</sub>L but loads the microwave electrode harder, and the bandwidth
+falls. Where you choose to sit on that curve is the operating point of the
+whole modulator.</p>
+
+<p>Drawing the curve is famously slow. Each point on it requires a
+self-consistent electrostatic charge simulation of the PN junction, an optical
+mode solve to get the phase-shift efficiency, a 3-D RF FDTD of the microwave
+electrode that loads it, and a stack of analytic post-processing to fold the
+junction back into the loaded transmission line. Four different physics, four
+different solvers, all indexed by a geometry that has to stay consistent across
+them. Most teams pick one operating point and ship a single device, because
+doing it for ten points is months of work.</p>
+
+<p>We let an LLM-orchestrated agent do it in a single overnight run.</p>
+
+<figure>
+  <img src="field_plots/step2_BW_vs_efficiency.png"
+       alt="Bandwidth vs modulation efficiency — the engineering takeaway from this run.">
+  <figcaption><strong>The headline result.</strong> Each circle is one full
+  modulator design: the agent picked a junction operating point (doping × bias),
+  and then independently designed a 1 mm-long segmented coplanar-strip electrode
+  for that specific junction. The bandwidth on the <em>y</em>-axis is the EO
+  3-dB bandwidth of the loaded line at that geometry, sized for a 5-dB
+  extinction ratio at 2 V<sub>pp</sub> push-pull. The <em>x</em>-axis is
+  modulation efficiency, 1/V<sub>π</sub>L — higher is a more efficient (shorter)
+  device.</figcaption>
+</figure>
+
+<p>The Pareto curve is the result. To raise the bandwidth above ~30 GHz you
+have to accept a lower-doped junction with V<sub>π</sub>L ≥ 1 V·cm — i.e. a
+longer device. To make the device short (sub-300 µm), you have to accept BW
+around 22 GHz. There is no operating point that gives both, in this fab
+process, with this electrode topology.</p>
+
+<p>That single curve is something a discrete-device designer can act on. It is
+also the kind of plot that, until this run, didn't exist for any one project
+because nobody had time to make it.</p>
+
+<p>This is the third in a series of agentic photonic design experiments —
+following the
+<a href="https://hs.flexcompute.com/blog/agentic-photonic-design-splitter">Y-splitter</a>
+and the <a href="https://hs.flexcompute.com/blog/agentic-photonic-design-routing">electrical routing</a>
+runs — and the first to span <strong>multiple physics domains</strong> in one
+autonomous loop.</p>
+
+<h2>Why this is normally slow</h2>
+
+<p>The hardness of a PN-junction MZM is not in any one simulator. It is in the
+<em>handoff</em> between them.</p>
+
+<p>To get a single, honest data point on the bandwidth-vs-efficiency plot, here
+is what has to happen:</p>
+
+<ol>
+  <li><strong>Charge simulation.</strong> A 2-D Tidy3D Charge solver run of the
+    doped silicon waveguide, sweeping reverse bias. Output: capacitance per
+    unit length <em>C(V)</em>, plus the depletion-width profile.</li>
+  <li><strong>Optical mode solve.</strong> A separate run of the PhotonForge
+    mode solver on the same junction at each bias, extracting the complex
+    effective index of the optical mode. The real-part shift across bias gives
+    V<sub>π</sub>L; the imaginary part gives loss.</li>
+  <li><strong>Series resistance.</strong> The neutral-region resistance isn't
+    constant — the depletion width grows with reverse bias and eats some of
+    the conductive cross-section. We solve a small 2-D Laplace problem locally
+    for <em>R(V)</em>, per bias point.</li>
+  <li><strong>RF FDTD of the unloaded electrode.</strong> A full-wave 3-D
+    Tidy3D RF simulation of the segmented coplanar-strip line, with wave-port
+    mode solves on the two feed cross-sections. The segmented section alone
+    runs to a thousand mesh cells.</li>
+  <li><strong>Analytic loading.</strong> The junction is folded into the FDTD
+    result <em>afterward</em>, by ABCD-matrix de-embedding of the feedlines
+    and an analytic
+    <em>Y</em><sub>junction</sub>(ω) = 1 / (<em>R</em> + 1/(jω<em>C</em>))
+    shunt admittance — with the push-pull series factor of <em>C</em>/2,
+    <em>R</em>×2 carefully tracked.</li>
+  <li><strong>EO bandwidth.</strong> From the loaded characteristic impedance,
+    the loaded RF group index, the optical group index, and the MZM length, an
+    analytic EO S21 with root-find for the 3-dB point.</li>
+</ol>
+
+<p>Every one of those steps consumes a slightly different geometric
+description. The charge solver wants the doping profile and contacts; the mode
+solver wants the optical waveguide; the RF FDTD wants the aluminum CPS and the
+dielectric stack; the analytic step wants <em>C</em>, <em>R</em>, length, and a
+stack of S-parameters in a coherent frequency convention. Tidy3D internally
+uses the physics phase convention, which is opposite the engineering
+convention, so half of the extracted quantities need a
+<code>np.conjugate()</code> before they line up with textbook formulas. Forget
+one of those and you spend a week debugging.</p>
+
+<p>This is what we mean by <em>multiphysics</em>. The simulators are the easy
+part. The hard part is keeping a single geometry, a single doping, a single
+bias point coherent across four physics domains, and turning the cloud of
+results into a scalar objective that an optimizer can act on.</p>
+
+<h2>The loop, in plain language</h2>
+
+<p>We split the problem in two.</p>
+
+<p><strong>Step 1 maps the junction.</strong> A scalar <code>mult</code> scales
+both p- and n-core doping. Sweep <code>mult</code> along a bracket-and-fill
+schedule that places anchors at {0.2, 1, 5, 20} and then inserts new mults at
+the geometric midpoint of the largest gap on the (V<sub>π</sub>L, <em>C</em>)
+frontier. Each mult costs one charge sim plus one mode-solver batch over nine
+bias points. Ten mults gave seventy trade-off points across the achievable
+(V<sub>π</sub>L, <em>C</em>) Pareto cloud:</p>
+
+<figure>
+  <img src="field_plots/tradeoff_VpiL_C.png"
+       alt="Step-1 junction characterization. Color is log10(mult), markers are bias voltage. Dashed line is the lower envelope.">
+  <figcaption><strong>Step-1 junction characterization.</strong> 70 interior
+  trade-off points across 10 doping mults and 7 reverse-bias values. Color is
+  log<sub>10</sub>(mult); markers encode bias voltage. The dashed line is the
+  lower envelope (minimum V<sub>π</sub>L) at each <em>C</em> — the Step-2
+  c-target selector rides on this line.</figcaption>
+</figure>
+
+<p>The agent doesn't have to be clever here. It walks the bracket-and-fill,
+caches every charge and mode result on disk, and journals each row.</p>
+
+<p><strong>Step 2 designs an electrode per operating point.</strong> From the
+Step-1 journal, pick ten capacitance values linearly spaced across the
+available range, and for each one choose the Step-1 row with <strong>minimum
+V<sub>π</sub>L within ±10 %</strong> of that <em>C</em> — i.e. the most
+efficient junction available at that capacitance.</p>
+
+<p>Now run, <em>independently for each of the ten operating points</em>, an
+8-parameter optimization of a segmented coplanar-strip T-rail electrode. The
+free parameters are the inner gap <code>g</code>, signal and ground rail widths
+<code>ws</code>/<code>wg</code>, T-bar width/length <code>s</code>/<code>r</code>,
+T-neck length/width <code>h</code>/<code>t</code>, and inter-T period gap
+<code>c</code>. The objective evaluates the loaded characteristic impedance
+and loaded RF effective index at a band-center 25 GHz:</p>
+
+<pre>J = ((Re Z<sub>0,loaded</sub>(f<sub>0</sub>) − 50) / 50)² + ((n<sub>eff,RF,loaded</sub>(f<sub>0</sub>) − 3.88) / 3.88)²</pre>
+
+<p>where the junction loading is applied <em>after</em> the FDTD via analytic
+ABCD arithmetic. The 3.88 target is the optical group index — match it and the
+optical and microwave waves co-propagate, which is what high-BW MZMs
+require.</p>
+
+<p>Inside each operating point: 8 Latin-hypercube initial samples on the cloud,
+then three batches of 4 expected-improvement Bayesian optimization proposals on
+a Gaussian-process surrogate. Soft cap of 20 evaluations per operating point.
+After each batch the agent appends its own analysis to the journal —
+best-so-far, parameter-vs-objective correlations, which fab-rule bounds the
+optimum is pinned to, any retries — and then either continues or stops if the
+stagnation criterion fires.</p>
+
+<p>Ten operating points × twenty evaluations is, naively, two hundred RF FDTDs.
+The actual number that hit the cloud was around 150. The rest were cache hits,
+for reasons we'll come back to.</p>
+
+<h2>What the curve says</h2>
+
+<p>We made nine distinct designs (operating point 8 happened to share a
+junction with operating point 7, so they tied). The numbers, sorted by
+efficiency:</p>
+
+<table>
+<thead>
+<tr>
+  <th><em>C</em> [pF/cm]</th>
+  <th>V<sub>π</sub>L [V·cm]</th>
+  <th>1/V<sub>π</sub>L [(V·cm)⁻¹]</th>
+  <th>L<sub>MZM</sub> [µm]</th>
+  <th>Z<sub>0,loaded</sub> [Ω]</th>
+  <th>n<sub>eff,RF</sub></th>
+  <th>BW<sub>3dB</sub> [GHz]</th>
+</tr>
+</thead>
+<tbody>
+<tr><td> 2.92</td><td>1.523</td><td>0.66</td><td>1325</td><td>49.3</td><td>3.70</td><td class="peak">38.2</td></tr>
+<tr><td> 4.01</td><td>1.078</td><td>0.93</td><td> 937</td><td>48.3</td><td>4.20</td><td>36.1</td></tr>
+<tr><td> 6.27</td><td>0.800</td><td>1.25</td><td> 696</td><td>38.6</td><td>4.66</td><td>33.8</td></tr>
+<tr><td> 7.62</td><td>0.619</td><td>1.62</td><td> 538</td><td>32.0</td><td>4.55</td><td>26.1</td></tr>
+<tr><td> 9.02</td><td>0.537</td><td>1.86</td><td> 467</td><td>30.7</td><td>4.88</td><td>25.8</td></tr>
+<tr><td>10.35</td><td>0.495</td><td>2.02</td><td> 430</td><td>27.8</td><td>5.05</td><td>24.3</td></tr>
+<tr><td>12.11</td><td>0.418</td><td>2.39</td><td> 363</td><td>26.3</td><td>5.31</td><td>21.6</td></tr>
+<tr><td>14.07</td><td>0.383</td><td>2.61</td><td> 333</td><td>22.4</td><td>5.36</td><td>21.9</td></tr>
+<tr><td>16.47</td><td>0.324</td><td>3.08</td><td> 282</td><td>21.0</td><td>5.60</td><td>21.8</td></tr>
+</tbody>
+</table>
+
+<p>Two regimes are visible.</p>
+
+<p><strong>Light-loading regime (<em>C</em> &lt; ~5 pF/cm).</strong> The
+electrode holds Z<sub>0</sub> inside a couple of percent of 50 Ω, and the RF
+group index sits close to 3.7-4.2. Bandwidth tops out at 38 GHz with a 1.3 mm-
+long device. This is the operating point a high-speed analog or short-reach
+coherent designer would pick.</p>
+
+<p><strong>Heavy-loading regime (<em>C</em> &gt; ~7 pF/cm).</strong> The
+8-parameter electrode can no longer match Z<sub>0</sub> to 50 Ω — the shunt
+admittance of the heavily-doped junction pulls the loaded characteristic
+impedance into the 20-30 Ω range, and the RF group index overshoots 3.88.
+Bandwidth collapses below 25 GHz. Six of the eight free parameters in these
+best designs are pinned against the fab-rule box (<code>wg</code>-low,
+<code>s</code>-low, <code>r</code>-high, <code>h</code>-low, <code>t</code>-high,
+<code>c</code>-high), which is the agent's way of telling us the bounds are
+limiting, not the physics. The reward, though, is footprint: a 282 µm
+modulator delivers 5 dB extinction at 2 V<sub>pp</sub>.</p>
+
+<p>The corresponding EO frequency responses are below; the headroom above the
+−3 dB line at low <em>C</em> versus the early rolloff at high <em>C</em> is the
+bandwidth-vs-efficiency trade made visible:</p>
+
+<figure>
+  <img src="field_plots/step2_EO_S21_best.png"
+       alt="EO S21 magnitude of the best design at each operating point.">
+  <figcaption><strong>EO S21 magnitude of the best design at each operating
+  point</strong>, normalized to DC. The dashed line marks −3 dB. Designs at low
+  <em>C</em> (purple) stay flat past 35 GHz; designs at high <em>C</em>
+  (yellow) roll off near 20-22 GHz.</figcaption>
+</figure>
+
+<p>The engineering takeaway is uncomfortable but real: <strong>to get more
+bandwidth, you have to accept a less efficient (longer) device.</strong> The
+fastest modulator in our sweep is 1.3 mm long; the most efficient is 282 µm
+but limited to ~22 GHz. There is no free corner in this design space — at
+least not within the 8-parameter electrode box we gave the agent. Loosening
+those bounds is an experiment for another night.</p>
+
+<h2>The cost of overnight</h2>
+
+<p>A single 8-parameter Bayesian optimization with 20 RF FDTDs is reasonable.
+Ten of them in series, on the cloud, would be expensive. Three things made this
+run actually cheap:</p>
+
+<p><strong>Latin-hypercube re-use across operating points.</strong> The LHS
+proposer is deterministic and operating-point-independent. After the first
+c_target ran its 8 LHS evaluations on the cloud, every subsequent c_target got
+those 8 FDTDs as cache hits — same geometry, same de-embedded S-parameters,
+only the loaded objective recomputed against a different junction. Eight of the
+twenty per-target evaluations became free, every single time.</p>
+
+<p><strong>Pareto collisions in the target set.</strong> Two of the ten
+operating points ended up sharing the same Step-1 junction row. The agent ran
+the full BO loop for the second of them anyway — and got twenty cache hits,
+zero new FDTDs, instant return.</p>
+
+<p><strong>Batched cloud submission.</strong> Each batch of 4-8 designs is one
+<code>tidy3d.web.Batch</code>. The cloud runs them all in parallel, so the
+wall-clock of a batch is the slowest design, not the sum. Mode solves for
+wave-ports are batched the same way.</p>
+
+<p>Final accounting: 196 evaluation rows in the Step-2 journal, of which
+roughly 151 were new cloud FDTDs (the rest cache hits). One design failed
+sanity-checks (a sign-flipped n<sub>eff</sub> out of the phase-unwrap, a known
+weakness of ABCD de-embedding when α is small and β wraps near zero) and the
+orchestrator retried it with a 2 % geometric perturbation. The retry landed
+cleanly. Total wall-clock: about seventeen hours, mostly idle wait overnight.
+No human in front of the screen.</p>
+
+<p>The combined cost across charge sims, mode solves, and RF FDTDs was a few
+hundred FlexCredits — a single-day budget for the kind of result that
+otherwise takes a team-month.</p>
+
+<h2>What the agent actually decided</h2>
+
+<p>The agent was not in charge of the methodology. The engineering choices —
+the loaded-line objective, the push-pull series-PN convention with its
+<em>C</em>/2 and <em>R</em>×2 factors, the c-target selection rule, the
+constant-length segmented section, the budget structure — were set up in
+advance.</p>
+
+<p>What the agent did, all night, was <em>run</em> that methodology. Two
+moments are worth pulling out, both because they ended up as durable journal
+entries:</p>
+
+<p><strong>A mid-run pipeline fix.</strong> On the first BO batch of operating
+point 0, Tidy3D rejected the upload with a <code>SetupError</code>: the wave
+port was sitting less than two mesh cells from the simulation boundary in
+<em>y</em>. Root cause: the feedline length
+<code>L_feedline = 10 × period</code> had collapsed below the port clearance
+when BO proposed a small-period electrode. The agent's response was to floor
+the feedline length at 300 µm in <code>step2/geom.py</code>, log a meta-row in
+the journal explaining why, and re-submit. The geometry hash didn't include
+the feedline length, so the existing LHS cache stayed valid.</p>
+
+<p><strong>The de-embed failure and its retry.</strong> On operating point 1,
+one BO design came back with <code>n_eff at f0 = -3.01</code>. Sanity-check
+failed; auto-retry launched with a 2 % perturbation; retry succeeded; both
+events are in the journal.</p>
+
+<p>The point isn't that these are clever. The point is that the journal has
+them, in plain language, alongside every batch's best-so-far and every
+parameter correlation. Anyone walking up to the project the morning after can
+scroll through the journal and reconstruct the run's reasoning without having
+watched it happen.</p>
+
+<h2>What this enables</h2>
+
+<p>Two photonic devices have now been swept with this same agentic loop, end
+to end: a Y-splitter (a single-physics problem) and a PN-junction MZM (a
+four-physics-domain problem). The pattern was identical in both cases. The
+engineer defines what "better" means in a scalar objective, hands the agent a
+parameter box and a cloud budget, and looks at the journal the next morning.</p>
+
+<p>The hard work is upstream of the loop — picking the right scalar objective,
+picking the right parameter box, picking the right c-target rule, knowing
+that the loaded line is the right thing to optimize and not the unloaded one.
+The agent doesn't replace that. What it replaces is the months of careful
+hand-stewardship between four solvers that follow.</p>
+
+<p>What this enables, then, is the next sweep. A ring-modulator
+bandwidth-vs-<em>Q</em> map. A grating-coupler insertion-loss-vs-fiber-angle
+curve. A balanced photodiode RF-bandwidth-vs-area sweep. A heater
+power-vs-response-time. These aren't research problems any more; they are
+overnight agent jobs against a paid multiphysics cloud.</p>
+
+<p>The creativity does not disappear. It moves up the stack: from drawing
+geometries to picking objectives, and from staring at S-parameters to reading
+the trade-off curve that comes out the next morning.</p>
+
+<hr>
+
+</body>
+</html>
