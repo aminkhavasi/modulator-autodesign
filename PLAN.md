@@ -304,6 +304,142 @@ Two row kinds:
 - **Meta rows (`meta=true`):** `c_target_index, batch_id, agent_notes` —
   the agent's free-text analysis after a batch (Markdown).
 
+## Step 3 — c_target=9 bandwidth refinement (added 2026-05-12)
+
+### Why this phase exists
+
+After Step 2 completed all 10 c_targets with the J objective
+`J = ((Z0-50)/50)^2 + ((n_eff-3.88)/3.88)^2`, we asked whether relaxing
+fab-rule minimums (s, r, h, c → 1 μm) could improve the heaviest-loading
+design (c_target=9, C=16.47 pF/cm). The answer surfaced a much more
+important problem: **for the short modulator length implied by the high
+loading (L ≈ 282 μm), velocity walk-off is negligible. J's n_eff penalty
+therefore pulled BO toward LOW Z0 (further from 50 Ω), which is the
+wrong direction for BW.** Re-ranking all 32 c_target=9 designs by the
+actual analytic 3-dB EO bandwidth (`analyze_bw.py`) showed:
+
+- Correlation BW vs Z0: **+0.82** (higher Z0 → higher BW).
+- Best-BW design (27.05 GHz) was J's *worst* design (J=2.05).
+- J-incumbent (J=0.53) gives only 22.7–23.9 GHz.
+
+So the actual c_target=9 work is BW maximization, and J was misaligned
+with that goal at this point on the C trade-off curve.
+
+### Objective
+
+`step2/objective_bw.py` returns -BW (skopt minimizes) using the same
+`bandwidth_3dB_GHz` pipeline as `bandwidth_sweep`. Length is fixed by
+the same ER=5 dB, Vpp=2 V, push-pull recipe.
+
+### Workflow
+
+```
+python -m step2.run_batch bo --c-target 9 --n 4 --rules relaxed \
+       --budget-override --objective BW
+```
+
+- BO history is rebuilt: each prior c_target=9 row's BW is computed from
+  its cached CPSResult (free) and fed to skopt as (-BW).
+- Batches tagged `bw_bo_N` to distinguish from the J-phase batches.
+- The journal stores BW_GHz and MZM_length_um alongside the existing
+  Z0_re_f0, n_eff_f0 columns.
+
+### Budget
+
+- Up to 20 additional FDTDs at c_target=9 with the BW objective.
+- Stop and ask the user before exceeding 20, regardless of best-so-far
+  trajectory.
+
+### What we DON'T do
+
+- We do NOT retroactively change c_targets 0–8. Their J-phase result
+  stands. The BW pivot only applies to c_target=9 where the misalignment
+  is largest (heaviest loading, shortest modulator).
+- We do NOT delete or rewrite the existing J-phase journal entries.
+  They are preserved as historical evidence.
+
+## Step 4 — BW reoptimization across all 10 c_targets (added 2026-05-12)
+
+### Why this phase exists
+
+Step 3 fixed c_target=9 with the new BW objective and got 23.9 → 28.16 GHz
+(+18 %). Reviewing the other 9 c_targets showed the same J-vs-BW
+misalignment, just with smaller absolute gaps because at lighter loading
+J was less wrong.  User authorized a full reoptimization across all 10
+c_targets with the BW objective, plus relaxing CPS-rail bounds to a 5 μm
+minimum (RULES_V2).
+
+### Key learnings to lock in (do not re-litigate these)
+
+1. **Higher Z₀ is always better for BW at all 10 c_targets**, even at the
+   long-modulator light-loading end where conventional CPS design says
+   "match Z₀ to 50 Ω".  The reason is that the modulators are short
+   enough that velocity walk-off contributes negligibly to the BW
+   integral; only Z₀-mismatch reflection matters.  We empirically
+   verified this by deliberately submitting low-Z₀ candidates with g=9,
+   g=10, g=20 and finding they all gave BW = 17-29 GHz — strictly worse
+   than the high-Z₀ corner.
+2. **`g` should be at g_max (200 μm) for every c_target.** Sub-200 g
+   candidates we tested were strictly worse.
+3. **The optimal `ws=wg` shrinks with heavier loading.** c=0-2 prefer
+   `ws ≈ 20`; c=3-6 prefer `ws ≈ 10`; c=7-9 prefer `ws ≈ 5`. RULES_V2's
+   relaxation of ws_min to 5 was load-bearing for the heavy-loading
+   c_targets.
+4. **Cross-evaluation across c_targets is free.** A single CPS FDTD
+   gives 10 data points (one per c_target's junction). Always
+   cross-evaluate after every new batch.
+
+### Workflow used
+
+```
+# Step 0: cross-evaluate all cached geometries against all c_target
+# junctions (no FDTD cost):
+python cross_eval_bw.py
+
+# Round 1: 8 hand-picked candidates spanning the V2 corners (high-Z0
+# AND low-Z0 to verify the hypothesis):
+python bw_round1.py
+
+# Round 2: refine the winning high-Z0 corner with finer ws scan:
+python bw_round2.py
+
+# (More rounds if the trajectory still shows uplift; otherwise stop.)
+```
+
+### Budget
+
+- 200 FDTDs total authorized for the entire BW reoptimization phase.
+- Used: 4 (Step 3 hand-picked) + 8 (R1) + 8 (R2) = **20 FDTDs**.
+- Stopped: marginal BW gain per FDTD dropped below 0.2 GHz in R2.
+
+### Outcome (see step4_bw_summary.json, field_plots/step4_BW_vs_C_pivot.png)
+
+| c | C pF/cm | J-phase BW | BW-phase BW | uplift GHz |
+|---|---|---|---|---|
+| 0 | 2.92 | 38.25 | 39.89 | +1.6 |
+| 1 | 4.01 | 35.96 | 39.42 | +3.5 |
+| 2 | 6.27 | 33.84 | 39.86 | +6.0 |
+| 3 | 7.62 | 26.11 | 36.82 | +10.7 |
+| 4 | 9.02 | 25.77 | 35.35 | +9.6 |
+| 5 | 10.35 | 24.21 | 34.55 | +10.3 |
+| 6 | 12.11 | 23.88 | 32.57 | +8.7 |
+| 7,8 | 14.07 | 21.94 | 31.04 | +9.1 |
+| 9 | 16.47 | 21.79 | 28.99 | +7.2 |
+
+### Geometry pattern that emerged
+
+- `g = g_max = 200 μm` is optimal across all c_targets (max loop).
+- Optimal `ws = wg` *shrinks* with junction loading: c=0-2 wants 20-192;
+  c=4-5 wants 10; c=6-8 wants 5 (V2 rule load-bearing); c=9 also wants 5.
+- T-bar density *bifurcates*: light/mid loading prefers sparse T
+  (r=80, c=10); very-heavy c=9 prefers fine dense T (r=c≈1.5).
+
+### What we DON'T do
+
+- We do NOT run BO per-c_target separately.  Cross-evaluation means
+  every FDTD informs every c_target; hand-picked design-of-experiments
+  batches are more efficient.
+
 ## Pending Additions (after Step 2 is complete)
 
 ### Live dashboard / progress viewer

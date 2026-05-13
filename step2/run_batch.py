@@ -33,6 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from .fab_rules import DEFAULT_RULES
+from .fab_rules_relaxed import RELAXED_RULES
 from .geom import CPSGeometry
 from .journal import (
     JOURNAL, append_evaluation, attach_agent_notes, best_so_far,
@@ -77,9 +78,13 @@ def _junction_from_target(target: dict, *, n_group_opt: float = 3.88
     )
 
 
-def _budget_check(c_idx: int, requested_n: int, *, allow_hard: bool = False
-                  ) -> int:
+def _budget_check(c_idx: int, requested_n: int, *, allow_hard: bool = False,
+                  budget_override: bool = False) -> int:
     """Refuse to run if budget would be exceeded.  Returns n actually allowed."""
+    if budget_override:
+        print(f"  ! --budget-override active: skipping per-C cap check for "
+              f"c_target={c_idx}, requested n={requested_n}")
+        return requested_n
     used = len([r for r in per_C_history(c_idx)
                 if not r.get("meta")])
     cap = HARD_BUDGET if allow_hard else SOFT_BUDGET
@@ -93,6 +98,12 @@ def _budget_check(c_idx: int, requested_n: int, *, allow_hard: bool = False
                    f"explicit user override.")
         raise SystemExit(msg)
     return min(requested_n, remaining)
+
+
+def _rules_for(name: str):
+    if name == "relaxed":
+        return RELAXED_RULES
+    return DEFAULT_RULES
 
 
 def _evaluate_batch_and_journal(geom_dicts: list[dict], target: dict,
@@ -180,12 +191,16 @@ def _journal_one(geom_dict, target, batch_id, c_idx, cps, *, suffix=""):
 
 def cmd_lhs(args):
     target = _target_for_index(args.c_target)
-    n = _budget_check(args.c_target, args.n, allow_hard=args.allow_hard)
-    candidates = propose_lhs(n, rules=DEFAULT_RULES, seed=args.seed)
-    print(f"=== LHS batch: c_target={args.c_target}, n={n} ===")
+    n = _budget_check(args.c_target, args.n, allow_hard=args.allow_hard,
+                      budget_override=args.budget_override)
+    rules = _rules_for(args.rules)
+    candidates = propose_lhs(n, rules=rules, seed=args.seed)
+    batch_id = "relaxed_lhs" if args.rules == "relaxed" else "lhs"
+    print(f"=== LHS batch ({args.rules} rules): "
+          f"c_target={args.c_target}, n={n}, batch_id={batch_id} ===")
     for i, geom in enumerate(candidates):
-        print(f"  [lhs {i+1}/{n}] {geom}")
-    _evaluate_batch_and_journal(candidates, target, batch_id="lhs",
+        print(f"  [{batch_id} {i+1}/{n}] {geom}")
+    _evaluate_batch_and_journal(candidates, target, batch_id=batch_id,
                                 c_idx=args.c_target,
                                 retry_on_failure=not args.no_retry)
     notes = review_C_target(args.c_target,
@@ -199,7 +214,9 @@ def cmd_lhs(args):
 
 def cmd_bo(args):
     target = _target_for_index(args.c_target)
-    n = _budget_check(args.c_target, args.n, allow_hard=args.allow_hard)
+    n = _budget_check(args.c_target, args.n, allow_hard=args.allow_hard,
+                      budget_override=args.budget_override)
+    rules = _rules_for(args.rules)
     successes = filter_successes(per_C_history(args.c_target))
     successes = [r for r in successes if not r.get("meta")]
     if len(successes) < 4:
@@ -208,12 +225,13 @@ def cmd_bo(args):
             "Run more LHS first."
         )
     history = [(r["geometry"], r["objective"]) for r in successes]
-    candidates = propose_bo(history, n, rules=DEFAULT_RULES)
+    candidates = propose_bo(history, n, rules=rules)
 
     # Determine batch label
+    prefix = "relaxed_bo_" if args.rules == "relaxed" else "bo_"
     n_prior_bo = len({r["batch_id"] for r in per_C_history(args.c_target)
-                      if r.get("batch_id", "").startswith("bo_")})
-    batch_id = f"bo_{n_prior_bo + 1}"
+                      if r.get("batch_id", "").startswith(prefix)})
+    batch_id = f"{prefix}{n_prior_bo + 1}"
 
     print(f"=== BO batch '{batch_id}': c_target={args.c_target}, n={n} ===")
     for i, geom in enumerate(candidates):
@@ -317,6 +335,12 @@ def main():
                        help="extend budget from soft (20) to hard (40) cap")
     p_lhs.add_argument("--no-retry", action="store_true",
                        help="disable auto-retry on FDTD failure")
+    p_lhs.add_argument("--rules", choices=["default", "relaxed"],
+                       default="default",
+                       help="fab-rule set (default | relaxed). "
+                            "'relaxed' drops s/r/h/c minimums to 1.0 μm.")
+    p_lhs.add_argument("--budget-override", action="store_true",
+                       help="bypass per-C run cap (use sparingly)")
     p_lhs.set_defaults(func=cmd_lhs)
 
     p_bo = sub.add_parser("bo")
@@ -324,6 +348,11 @@ def main():
     p_bo.add_argument("--n", type=int, default=4)
     p_bo.add_argument("--allow-hard", action="store_true")
     p_bo.add_argument("--no-retry", action="store_true")
+    p_bo.add_argument("--rules", choices=["default", "relaxed"],
+                      default="default",
+                      help="fab-rule set (default | relaxed)")
+    p_bo.add_argument("--budget-override", action="store_true",
+                      help="bypass per-C run cap (use sparingly)")
     p_bo.set_defaults(func=cmd_bo)
 
     p_rev = sub.add_parser("review")
